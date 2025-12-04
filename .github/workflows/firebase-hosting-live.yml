@@ -19,21 +19,14 @@ jobs:
         with:
           node-version: '20' # Recommended Node.js version
 
-      # 2. Install Dependencies
-      - name: Install dependencies
-        run: npm install
+       # 2. Install and Build the App (Combined Step)
+      - name: Install Dependencies and Build
+        run: |
+          npm install
+          npm run build
+          
 
-        
-      # 2.5 Install VITE/BUILD TOOLS 
-      - name: Install Build Dependencies
-        run: npm install vite typescript
-        
-
-      # 3. Build the LetEX React App (npm run build)
-      - name: Build the App
-        run: npm run build
-
-      # 4. Deploy to Firebase Hosting
+      # 3. Deploy to Firebase Hosting
       - name: Deploy to Live Channel
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
