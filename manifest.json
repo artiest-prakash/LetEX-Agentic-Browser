@@ -1,0 +1,22 @@
+{
+  "short_name": "LetEX",
+  "name": "LetEX AI Agent",
+  "description": "Context-aware AI browsing assistant",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192.png?text=LetEX",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512.png?text=LetEX",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
+  "orientation": "portrait"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "LetEX",
+  "description": "A high-fidelity, minimalist React application featuring a glassmorphism UI design, centered around a unified command interface and an AI agent sidebar.",
+  "requestFramePermissions": [],
+  "permissions": [
+    "notifications"
+  ]
+}
