@@ -23,6 +23,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+        
+      # 2.5 Install VITE/BUILD TOOLS 
+      - name: Install Build Dependencies
+        run: npm install vite typescript
+        
+
       # 3. Build the LetEX React App (npm run build)
       - name: Build the App
         run: npm run build
