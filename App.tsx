@@ -1,15 +1,25 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { CommandBar } from './components/CommandBar';
 import { MainViewport } from './components/MainViewport';
-import { processUrlInput, isLikelyToBlock, isValidUrl } from './utils/urlHandler';
+import { processUrlInput, isLikelyToBlock, isValidUrl, transformUrlForEmbed } from './utils/urlHandler';
 import { sendMessageToGemini } from './services/gemini';
 import { auth, signInWithGoogle, logOut, saveThread, getUserThreads, getUserNotes } from './services/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Message, User, Thread, Note } from './types';
 
 const App: React.FC = () => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Default to closed on mobile, open on desktop
+  // We also check localStorage for user preference if available
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedState = localStorage.getItem('isSidebarOpen');
+      if (savedState !== null) return JSON.parse(savedState);
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
   
   // Auth State
   const [user, setUser] = useState<User | null>(null);
@@ -39,6 +49,29 @@ const App: React.FC = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // --- Persistence Effect ---
+  useEffect(() => {
+    // Save browser state to survive refreshes
+    localStorage.setItem('currentUrl', currentUrl);
+    localStorage.setItem('historyStack', JSON.stringify(historyStack));
+    localStorage.setItem('historyIndex', historyIndex.toString());
+    localStorage.setItem('isSidebarOpen', JSON.stringify(isSidebarOpen));
+  }, [currentUrl, historyStack, historyIndex, isSidebarOpen]);
+
+  useEffect(() => {
+    // Restore state on mount
+    const savedUrl = localStorage.getItem('currentUrl');
+    const savedStack = localStorage.getItem('historyStack');
+    const savedIndex = localStorage.getItem('historyIndex');
+
+    if (savedUrl && savedUrl !== '/welcome') {
+      setCurrentUrl(savedUrl);
+      setIsError(isLikelyToBlock(savedUrl));
+    }
+    if (savedStack) setHistoryStack(JSON.parse(savedStack));
+    if (savedIndex) setHistoryIndex(parseInt(savedIndex));
+  }, []);
 
   // --- Auth & Data Loading Effect ---
   useEffect(() => {
@@ -71,7 +104,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (user && messages.length > 1) { // Only save if there's actual conversation
         // Debounce or simple logic: Save every time messages change for this prototype
-        // In prod, use debounce.
         const title = messages.find(m => m.sender === 'user')?.text.substring(0, 40) + "..." || "New Conversation";
         
         saveThread(user.uid, currentThreadId, title, messages).then(() => {
@@ -97,8 +129,6 @@ const App: React.FC = () => {
   }, [messages, user, currentThreadId]);
 
   // Refresh Notes list occasionally or after tool usage
-  // For this prototype, we'll just re-fetch when Sidebar opens or specific events occur.
-  // We can also trigger this inside handleSendMessage's callback if we wanted perfect sync.
   const refreshNotes = async () => {
       if (user) {
           const freshNotes = await getUserNotes(user.uid);
@@ -220,7 +250,6 @@ const App: React.FC = () => {
     const responseText = await sendMessageToGemini(messages, text, pageContent, onToolStart, user.uid);
 
     // Replace the specific loading message with the final text
-    // Note: If onToolStart fired, the `loadingMsg` is at the very end of the array.
     setMessages(prev => prev.map(msg => 
         msg.id === loadingId 
         ? { ...msg, text: responseText, isLoading: false } 
@@ -239,8 +268,11 @@ const App: React.FC = () => {
   };
 
   const handleNavigate = (input: string) => {
-    const newUrl = processUrlInput(input);
+    let newUrl = processUrlInput(input);
     
+    // Try to optimize for embedding (e.g. YouTube -> embed)
+    newUrl = transformUrlForEmbed(newUrl);
+
     setIsLoading(true);
     setIsError(false);
     setPageContent(''); // Clear old context
@@ -249,10 +281,24 @@ const App: React.FC = () => {
     if (isLikelyToBlock(newUrl)) {
       setIsError(true);
       setIsLoading(false);
-      setPageContent(`Context extraction failed. ${newUrl} does not allow embedding.`);
+      setPageContent(`Context unavailable. The application automatically blocked ${newUrl} to prevent display errors.`);
     }
 
     // Update History
+    const newHistory = historyStack.slice(0, historyIndex + 1);
+    newHistory.push(newUrl);
+    setHistoryStack(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    setCurrentUrl(newUrl);
+  };
+
+  const handleGoHome = () => {
+    setIsLoading(false);
+    setIsError(false);
+    setPageContent('User is on the welcome screen.');
+    const newUrl = '/welcome';
+    
+    // Add to history if we want Home to be a history state
     const newHistory = historyStack.slice(0, historyIndex + 1);
     newHistory.push(newUrl);
     setHistoryStack(newHistory);
@@ -301,6 +347,16 @@ const App: React.FC = () => {
       handleSendMessage("Provide a 4-point, bulleted summary of the content in the current context.");
   };
 
+  const handleReaderMode = () => {
+      // Trigger the agent to read/search the current URL since iframe is blocked
+      handleSendMessage(`Please read and summarize the content of this URL: ${currentUrl}. It cannot be displayed in the iframe due to security restrictions.`);
+  };
+
+  const handleManualBlock = () => {
+      setIsError(true);
+      setPageContent(`Context unavailable. The user reported that ${currentUrl} could not be displayed.`);
+  };
+
   return (
     <div className="relative w-full h-full flex overflow-hidden">
       
@@ -314,6 +370,8 @@ const App: React.FC = () => {
         onFrameLoad={handleFrameLoad}
         onNavigateBack={handleBack}
         onNavigateForward={handleForward}
+        onNavigateHome={handleGoHome}
+        onNavigate={handleNavigate}
         onRefresh={handleRefresh}
         canGoBack={historyIndex > 0}
         canGoForward={historyIndex < historyStack.length - 1}
@@ -321,6 +379,8 @@ const App: React.FC = () => {
         user={user}
         onSignIn={handleSignIn}
         onSignOut={handleSignOut}
+        onReaderMode={handleReaderMode}
+        onReportIssue={handleManualBlock}
       />
 
       {/* Floating Command Bar */}
@@ -328,6 +388,7 @@ const App: React.FC = () => {
         onSubmit={handleCommand} 
         isLoading={isLoading}
         currentUrl={currentUrl}
+        isSidebarOpen={isSidebarOpen}
       />
 
       {/* Right Sidebar Agent */}

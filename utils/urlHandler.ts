@@ -22,10 +22,36 @@ export const processUrlInput = (input: string): string => {
     return `https://${trimmed}`;
   }
 
-  // Fallback for when the browser logic decides to search (Phase 2 legacy)
-  // However, Phase 3 Logic prefers Chat for non-URLs.
-  // This function is strictly for "Turn this string into a browser URL"
+  // Fallback -> Search
   return `https://duckduckgo.com/?q=${encodeURIComponent(trimmed)}`;
+};
+
+/**
+ * Transforms standard URLs into embeddable versions where possible.
+ * e.g. youtube.com/watch?v=123 -> youtube.com/embed/123
+ */
+export const transformUrlForEmbed = (url: string): string => {
+  try {
+    const urlObj = new URL(url);
+    
+    // YouTube Video Transformation
+    if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
+      // already embed?
+      if (urlObj.pathname.startsWith('/embed/')) return url;
+
+      const videoId = urlObj.searchParams.get('v');
+      if (videoId) {
+        return `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+      }
+      if (urlObj.hostname === 'youtu.be') {
+          return `https://www.youtube.com/embed/${urlObj.pathname.slice(1)}?autoplay=1`;
+      }
+    }
+
+    return url;
+  } catch (e) {
+    return url;
+  }
 };
 
 /**
@@ -40,21 +66,28 @@ export const isValidUrl = (input: string): boolean => {
     return domainRegex.test(trimmed);
 };
 
+export const BLOCKED_DOMAINS = [
+  'google.com',
+  'youtube.com',
+  'facebook.com',
+  'twitter.com',
+  'x.com',
+  'instagram.com',
+  'amazon.com',
+  'reddit.com',
+  'wikipedia.org', // Often blocks embedding depending on region/settings
+  'netflix.com',
+  'whatsapp.com'
+];
+
 /**
  * Checks if a URL is likely to block iframes (X-Frame-Options).
  */
 export const isLikelyToBlock = (url: string): boolean => {
-  const blockers = [
-    'google.com',
-    'facebook.com',
-    'twitter.com',
-    'x.com',
-    'instagram.com',
-    'linkedin.com',
-    'github.com',
-    'youtube.com',
-    'reddit.com',
-    'amazon.com'
-  ];
-  return blockers.some(domain => url.includes(domain));
+  // Exception: If we successfully converted it to an embed URL, it won't block!
+  if (url.includes('youtube.com/embed/')) return false;
+
+  const lowerUrl = url.toLowerCase();
+  
+  return BLOCKED_DOMAINS.some(domain => lowerUrl.includes(domain));
 };
